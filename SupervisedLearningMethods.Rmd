@@ -1,0 +1,356 @@
+---
+title: "Comparing Supervised Learning Method"
+author: "Young Seok Seo"
+date: "4/15/2021"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+
+Compare the predictabilitty of Random Forest, Support Vector Machine, and NeuralNet methods using Banknote data
+
+
+The banknote dataset involves predicting whether a given banknote is authentic given a number of measures taken from a photograph.
+
+The dataset contains 1,372 rows with 5 numeric variables. It is a classification problem with two classes (binary classification).
+
+Below provides a list of the five variables in the dataset.
+
+variance of Wavelet Transformed image (continuous).
+skewness of Wavelet Transformed image (continuous).
+kurtosis of Wavelet Transformed image (continuous).
+entropy of image (continuous).
+class (integer).
+
+
+## Packages
+```{r}
+library(tidyverse)
+library(caret)
+library(randomForest)
+library(e1071)
+library(neuralnet)
+library(caTools)
+```
+
+## Read the 'banknote' data
+```{r}
+#Read the data
+data <- read.csv('banknote.csv')
+#Check number of missing values
+colSums(is.na(data))
+```
+
+```{r}
+#Convert to factor 
+data$class <- as.factor(data$class)
+```
+## Data Parition
+```{r}
+set.seed(123)
+training.samples <- data$class %>%
+  createDataPartition(p = 0.75, list = FALSE)
+train  <- data[training.samples, ]
+test <- data[-training.samples, ]
+```
+
+```{r}
+str(test)
+```
+
+## Random Forest
+```{r}
+fit <- randomForest(class ~ ., data = train, importance = TRUE)
+fit
+```
+
+```{r}
+#Sensitivity = (predicted == 1 | class==1)
+#Row = Real  /Col = Predicted
+567 / (5 + 567)
+```
+
+```{r}
+#specificity = (predicted ==0|class == 0)
+456 / (456 +2)
+```
+
+```{r}
+#accuracy 
+(567+456)/(456+2+5+567)
+```
+
+```{r}
+prediction <- fit %>% predict(test)
+confusionMatrix(prediction,test$class, positive = "1")
+#As is, we have defined positive = 1
+```
+
+```{r}
+#RandomForest
+#Accuracy : 0.9932039
+#Sensitivity : 0.9912587
+#Specificity : 0.9956332
+```
+
+```{r}
+#mean decrease in accuracy
+#how each variable are important in this model
+#higher value --> more important
+varImpPlot(fit, type = 1, main = "mean decrease in accuracy")
+```
+
+```{r}
+#mean decrease in node impurity
+varImpPlot(fit, type = 2, main = "MeanDecreaseGini")
+```
+
+```{r}
+#MeanDecreaseAccuracy
+importance(fit, type = 1)
+```
+
+
+
+
+## Support Vector Machine - Linear Kernel (C=1)
+```{r}
+#Support Vector Machine
+# 1) Support Vector Machine using Linear Kernel with C = 1 
+# Mean 0, sd = 1
+# Maximal Margin classifier  --> Margin : distance between the line and the nearset point of the both group. --> should be higher
+set.seed(123)
+model <- train(
+  class ~., data = train, method = "svmLinear",
+  trControl = trainControl("cv", number = 10),
+  preProcess = c("center","scale")
+  )
+model
+# Make predictions on the test data
+predicted.classes <- model %>% predict(test)
+head(predicted.classes)
+```
+
+```{r}
+confusionMatrix(predicted.classes, test$class, positive = "1")
+```
+SVM Linear Kernel (C=1)
+Accuracy : 0.9795 
+Sensitivity : 0.9632
+Specificity : 1.0000
+
+## Support Vector Machine - Linear Kernel (C=1.8)
+```{r}
+set.seed(123)
+model_tune <- train(
+  class ~., data = train, method = "svmLinear",
+  trControl = trainControl("cv", number = 10),
+  tuneGrid = expand.grid(C = seq(0.1, 2, length = 20)),
+  preProcess = c("center","scale")
+  )
+model_tune
+```
+
+```{r}
+# Make predictions on the test data
+predicted.classes_tune <- model_tune %>% predict(test)
+head(predicted.classes_tune)
+plot(model_tune)
+```
+
+```{r}
+model_tune$bestTune
+```
+
+```{r}
+confusionMatrix(predicted.classes_tune, test$class, positive = "1")
+```
+SVM Linear Kernel (C = 1.8)
+Accuracy : 0.9795 
+Sensitivity : 0.9684
+Specificity : 0.9934
+
+
+## Support Vector Machine - Radial Kernel (C=0.5)
+```{r}
+set.seed(123)
+model_svmRadial <- train(class~., data = train, method = "svmRadial", 
+trControl = trainControl("cv", number = 10), 
+preProcess=(c("scale","center")), 
+tuneLength = 10
+)
+model_svmRadial$bestTune
+```
+
+```{r}
+predicted.classes_svmRadial <- model_svmRadial %>% predict(test)
+confusionMatrix(predicted.classes_svmRadial, test$class, positive = "1")
+```
+SVM Radial Kernel (C = 0.5)
+Accuracy : 1
+Sensitivity : 1.0000
+Specificity : 1.0000
+
+## SVM with Polynomial Kernel
+```{r}
+
+set.seed(123)
+model_svmPoly <- train(class~., data = train, method = "svmPoly", 
+trControl = trainControl("cv", number = 10), 
+preProcess=(c("scale","center")), 
+tuneLength = 4
+)
+model_svmPoly$bestTune
+```
+
+```{r}
+predicted.classes_svmPoly <- model_svmPoly %>% predict(test)
+confusionMatrix(predicted.classes_svmPoly, test$class, positive = "1")
+```
+SVM with Polynomial Kernel (C = 0.25)
+Accuracy : 1
+Sensitivity : 1.0000
+Specificity : 1.0000
+
+# Neural Net
+```{r}
+#Re-Read the data
+#Dependent variable should be numerical value in NeuralNet
+data = read.csv('banknote.csv')
+head(data)
+```
+## Data Partition
+```{r}
+set.seed(123)
+training.sample = data$class %>% createDataPartition(p=0.75, list = FALSE)
+train <- data[training.sample, ]
+test <- data[-training.sample,]
+```
+## NN,SSE, 0 Hidden
+```{r}
+#NeuralNet with "SSE" --> Sum of Square Error. 
+#No Hidden Layer
+set.seed(123)
+model_sse = neuralnet(class~., data = train, hidden = 0, err.fct = "sse", linear.output=F)
+plot(model_sse, rep = "best")
+summary(model_sse)
+```
+
+```{r}
+probabilities_sse = predict(model_sse, test)
+predicted.classes_sse = ifelse(probabilities_sse > 0.5, 1, 0)
+confusionMatrix(factor(predicted.classes_sse), factor(test$class), positive = "1")
+```
+NN,SSE, 0 Hidden
+Accuracy : 0.9942 
+Sensitivity : 0.9945          
+Specificity : 0.9938
+
+
+# NN, CE, 0 Hidden
+```{r}
+# ce : Cross Entropy --> Good loss function for classification ==> Minimizes the distance between two(prdicted, actual) prob distributions. 
+set.seed(123)
+model_ce = neuralnet(class~., data = train, hidden = 0, err.fct = "ce", linear.output=F)
+plot(model_ce, rep = "best")
+
+```
+```{r}
+probabilities_ce = predict(model_ce, test)
+predicted.classes_ce = ifelse(probabilities_ce > 0.5, 1, 0)
+confusionMatrix(factor(predicted.classes_ce), factor(test$class), positive = "1")
+```
+NN, CE, 0 Hidden
+Accuracy : 0.9883
+Sensitivity : 0.9835          
+Specificity : 0.9938
+
+
+## Generalized Linear Model
+```{r}
+set.seed(123)
+model_glm = glm(class~., family = binomial, data = train)
+model_glm
+```
+
+```{r}
+probabilities_glm = model_glm %>% predict(test, type = "response")
+predicted.classes_glm = ifelse(probabilities_glm > 0.5, 1, 0)
+confusionMatrix(factor(predicted.classes_glm), factor(test$class), positive = "1")
+```
+Accuracy : 0.9883
+Sensitivity : 0.9835          
+Specificity : 0.9938 
+Same as "ce" method
+
+## NN, SSE, 3 Hidden
+```{r}
+# SSE method with 3 hidden Layer
+set.seed(123)
+model_3N = neuralnet(class~., data = train, hidden = 3, err.fct = "sse", linear.output = F)
+plot(model_3N, rep = "best")
+```
+
+```{r}
+probabilities_3N = predict(model_3N, test)
+predicted.classes_3N = ifelse(probabilities_3N > 0.5, 1, 0)
+confusionMatrix(factor(predicted.classes_3N), factor(test$class), positive = "1")
+```
+NN, SSE, 3 Hidden
+Accuracy : 1 
+Sensitivity : 1.0000     
+Specificity : 1.0000 
+
+## NN, CE, 3 Hidden Layer
+```{r}
+# Cross-Entropy with 3 hidden layer
+set.seed(123)
+model_3N_ce = neuralnet(class~., data = train, hidden = 3, err.fct = "ce", linear.output = F)
+plot(model_3N_ce, rep = "best")
+```
+```{r}
+probabilities_3N_ce = predict(model_3N_ce, test)
+predicted.classes_3N_ce = ifelse(probabilities_3N_ce > 0.5, 1, 0)
+confusionMatrix(factor(predicted.classes_3N_ce), factor(test$class), positive = "1")
+```
+NN, CE, 3 Hidden Layer
+Accuracy : 1
+Sensitivity : 1.0000     
+Specificity : 1.0000
+
+#### RandomForest
+Accuracy : 0.9932039
+
+#### SVM Linear Kernel (C=1)
+Accuracy : 0.9795 
+
+#### SVM Linear Kernel (C = 1.8)
+Accuracy : 0.9795 
+
+#### SVM Radial Kernel (C = 0.5)
+Accuracy : 1
+
+#### SVM with Polynomial Kernel (C = 0.25)
+Accuracy : 1
+
+#### NN,SSE, 0 Hidden
+Accuracy : 0.9942 
+
+#### NN, CE, 0 Hidden
+Accuracy : 0.9883
+
+#### NN, SSE, 3 Hidden
+Accuracy : 1 
+
+#### NN, CE, 3 Hidden Layer
+Accuracy : 1
+
+# Result
+
+SVM Radial Kernel (C = 0.5) = SVM with Polynomial Kernel (C = 0.25) = NN, SSE, 3 Hidden = NN, CE, 3 Hidden Layer >
+NN,SSE, 0 Hidden >
+RandomForest >
+NN, CE, 0 Hidden >
+SVM Linear Kernel (C = 1.8) 
